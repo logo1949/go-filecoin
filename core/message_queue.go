@@ -1,12 +1,19 @@
 package core
 
 import (
+	"context"
 	"sync"
 
 	"gx/ipfs/QmVmDhyTTUcQXFD1rRQ64fGLMSAoaQvNH3hwuaCFAPq2hy/errors"
 
 	"github.com/filecoin-project/go-filecoin/address"
+	"github.com/filecoin-project/go-filecoin/metrics"
 	"github.com/filecoin-project/go-filecoin/types"
+)
+
+var (
+	mqSizeGa   = metrics.NewInt64Gauge("message_queue_size", "The size of the message queue")
+	mqExpireCt = metrics.NewInt64Counter("message_queue_expire", "The number messages expired from the queue")
 )
 
 // MessageQueue stores an ordered list of messages (per actor) and enforces that their nonces form a contiguous sequence.
@@ -42,6 +49,10 @@ func (mq *MessageQueue) Enqueue(msg *types.SignedMessage, stamp uint64) error {
 	mq.lk.Lock()
 	defer mq.lk.Unlock()
 
+	defer func() {
+		mqSizeGa.Set(context.TODO(), int64(len(mq.queues[msg.From])))
+	}()
+
 	q := mq.queues[msg.From]
 	if len(q) > 0 {
 		nextNonce := q[len(q)-1].Msg.Nonce + 1
@@ -50,6 +61,7 @@ func (mq *MessageQueue) Enqueue(msg *types.SignedMessage, stamp uint64) error {
 		}
 	}
 	mq.queues[msg.From] = append(q, &QueuedMessage{msg, stamp})
+
 	return nil
 }
 
@@ -61,6 +73,10 @@ func (mq *MessageQueue) Enqueue(msg *types.SignedMessage, stamp uint64) error {
 func (mq *MessageQueue) RemoveNext(sender address.Address, expectedNonce uint64) (msg *types.SignedMessage, found bool, err error) {
 	mq.lk.Lock()
 	defer mq.lk.Unlock()
+
+	defer func() {
+		mqSizeGa.Set(context.TODO(), int64(len(mq.queues[sender])))
+	}()
 
 	q := mq.queues[sender]
 	if len(q) > 0 {
@@ -83,6 +99,10 @@ func (mq *MessageQueue) Clear(sender address.Address) bool {
 	mq.lk.Lock()
 	defer mq.lk.Unlock()
 
+	defer func() {
+		mqSizeGa.Set(context.TODO(), int64(len(mq.queues[sender])))
+	}()
+
 	q := mq.queues[sender]
 	delete(mq.queues, sender)
 	return len(q) > 0
@@ -93,15 +113,22 @@ func (mq *MessageQueue) Clear(sender address.Address) bool {
 func (mq *MessageQueue) ExpireBefore(stamp uint64) map[address.Address][]*types.SignedMessage {
 	mq.lk.Lock()
 	defer mq.lk.Unlock()
+	ctx := context.TODO()
 
 	expired := make(map[address.Address][]*types.SignedMessage)
 
 	for sender, q := range mq.queues {
 		if len(q) > 0 && q[0].Stamp < stamp {
+
+			// record the number of messages to be expired
+			mqExpireCt.Inc(ctx, int64(len(q)))
 			for _, m := range q {
 				expired[sender] = append(expired[sender], m.Msg)
 			}
+
 			mq.queues[sender] = []*QueuedMessage{}
+			// record the new size of the queue
+			mqSizeGa.Set(ctx, int64(len(mq.queues[sender])))
 		}
 	}
 	return expired
