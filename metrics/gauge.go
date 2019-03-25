@@ -8,11 +8,13 @@ import (
 	"gx/ipfs/QmNVpHFt7QmabuVQyguf8AbkLDZoFh7ifBYztqijYT1Sd2/go.opencensus.io/tag"
 )
 
+// Int64Gauge wraps an opencensus int64 measure that is uses as a gauge.
 type Int64Gauge struct {
 	measureCt *stats.Int64Measure
 	view      *view.View
 }
 
+// NewInt64Gauge creates a new Int64Gauge with demensionless units.
 func NewInt64Gauge(name, desc string, keys ...tag.Key) *Int64Gauge {
 	log.Infof("registering int64 gauge: %s - %s", name, desc)
 	iMeasure := stats.Int64(name, desc, stats.UnitDimensionless)
@@ -37,6 +39,7 @@ func NewInt64Gauge(name, desc string, keys ...tag.Key) *Int64Gauge {
 	}
 }
 
+// Set sets the value of the gauge to value `v`.
 func (c *Int64Gauge) Set(ctx context.Context, v int64) {
 	stats.Record(ctx, c.measureCt.M(v))
 }

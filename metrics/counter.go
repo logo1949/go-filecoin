@@ -7,11 +7,13 @@ import (
 	"gx/ipfs/QmNVpHFt7QmabuVQyguf8AbkLDZoFh7ifBYztqijYT1Sd2/go.opencensus.io/stats/view"
 )
 
+// Int64Counter wraps an opencensus int64 measure that is uses as a counter.
 type Int64Counter struct {
 	measureCt *stats.Int64Measure
 	view      *view.View
 }
 
+// NewInt64Counter creates a new Int64Counter with demensionless units.
 func NewInt64Counter(name, desc string) *Int64Counter {
 	log.Infof("registering int64 counter: %s - %s", name, desc)
 	iMeasure := stats.Int64(name, desc, stats.UnitDimensionless)
@@ -34,6 +36,7 @@ func NewInt64Counter(name, desc string) *Int64Counter {
 	}
 }
 
+// Inc increments the counter by value `v`.
 func (c *Int64Counter) Inc(ctx context.Context, v int64) {
 	stats.Record(ctx, c.measureCt.M(v))
 }
